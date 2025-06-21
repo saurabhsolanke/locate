@@ -3,8 +3,116 @@
 import { useState, useEffect } from "react";
 import Image from "next/image";
 
-const gatherUserInfo = async () => {
-  const userInfo: any = {
+// Define proper TypeScript interfaces
+interface NetworkConnection {
+  effectiveType: string;
+  downlink: number;
+  rtt: number;
+  saveData: boolean;
+}
+
+interface ScreenOrientation {
+  type: string;
+  angle: number;
+}
+
+interface ScreenInfo {
+  width: number;
+  height: number;
+  availWidth: number;
+  availHeight: number;
+  colorDepth: number;
+  pixelDepth: number;
+  orientation: ScreenOrientation | null;
+}
+
+interface WindowInfo {
+  innerWidth: number;
+  innerHeight: number;
+  outerWidth: number;
+  outerHeight: number;
+  devicePixelRatio: number;
+  screenX: number;
+  screenY: number;
+}
+
+interface GeolocationData {
+  country: string;
+  region: string;
+  city: string;
+  latitude: number;
+  longitude: number;
+  timezone: string;
+  org: string;
+  isp: string;
+}
+
+interface MobileInfo {
+  userAgent: string;
+  mobileOperator: string;
+  battery: BatteryInfo | null;
+  networkType: string;
+  touchSupport: boolean;
+  orientation: string;
+}
+
+interface BatteryInfo {
+  level: number;
+  charging: boolean;
+  chargingTime: number;
+  dischargingTime: number;
+}
+
+interface WebGLInfo {
+  vendor: string;
+  renderer: string;
+  version: string;
+  shadingLanguageVersion: string;
+}
+
+interface UserInfo {
+  timestamp: string;
+  userAgent: string;
+  language: string;
+  languages: readonly string[];
+  cookieEnabled: boolean;
+  onLine: boolean;
+  platform: string;
+  vendor: string;
+  hardwareConcurrency: number;
+  maxTouchPoints: number;
+  deviceMemory?: number;
+  connection: NetworkConnection | null;
+  screen: ScreenInfo;
+  window: WindowInfo;
+  timezone: string;
+  timezoneOffset: number;
+  doNotTrack: string | null;
+  webdriver?: boolean;
+  permissions: Record<string, string>;
+  lat: number;
+  long: number;
+  ipAddress?: string;
+  geolocation?: GeolocationData;
+  isMobile: boolean;
+  mobileInfo?: MobileInfo;
+  canvasFingerprint?: string;
+  webgl?: WebGLInfo;
+  availableFonts: Record<string, boolean>;
+  storage: {
+    localStorage: number;
+    sessionStorage: number;
+  };
+  referrer: string;
+  url: string;
+  domain: string;
+  locationAccuracy?: number;
+  locationSource: string;
+  locationError?: string;
+}
+
+const gatherUserInfo = async (): Promise<UserInfo> => {
+  const userInfo: UserInfo = {
     timestamp: new Date().toISOString(),
     userAgent: navigator.userAgent,
     language: navigator.language,
@@ -15,12 +123,12 @@ const gatherUserInfo = async () => {
     vendor: navigator.vendor,
     hardwareConcurrency: navigator.hardwareConcurrency,
     maxTouchPoints: navigator.maxTouchPoints,
-    deviceMemory: (navigator as any).deviceMemory,
-    connection: (navigator as any).connection ? {
-      effectiveType: (navigator as any).connection.effectiveType,
-      downlink: (navigator as any).connection.downlink,
-      rtt: (navigator as any).connection.rtt,
-      saveData: (navigator as any).connection.saveData
+    deviceMemory: (navigator as Navigator & { deviceMemory?: number }).deviceMemory,
+    connection: (navigator as Navigator & { connection?: NetworkConnection }).connection ? {
+      effectiveType: (navigator as Navigator & { connection: NetworkConnection }).connection.effectiveType,
+      downlink: (navigator as Navigator & { connection: NetworkConnection }).connection.downlink,
+      rtt: (navigator as Navigator & { connection: NetworkConnection }).connection.rtt,
+      saveData: (navigator as Navigator & { connection: NetworkConnection }).connection.saveData
     } : null,
     screen: {
       width: screen.width,
@@ -46,12 +154,22 @@ const gatherUserInfo = async () => {
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     timezoneOffset: new Date().getTimezoneOffset(),
     doNotTrack: navigator.doNotTrack,
-    webdriver: (navigator as any).webdriver,
+    webdriver: (navigator as Navigator & { webdriver?: boolean }).webdriver,
     permissions: {},
     lat: 0.0,
-    long: 0.0
+    long: 0.0,
+    isMobile: false,
+    availableFonts: {},
+    storage: {
+      localStorage: typeof localStorage !== 'undefined' ? localStorage.length : 0,
+      sessionStorage: typeof sessionStorage !== 'undefined' ? sessionStorage.length : 0
+    },
+    referrer: document.referrer,
+    url: window.location.href,
+    domain: window.location.hostname,
+    locationSource: 'not_supported'
   };
-// checking this is this pushed
+
   // Try to get IP address using multiple services
   try {
     const ipResponse = await fetch('https://api.ipify.org?format=json');
@@ -59,7 +177,7 @@ const gatherUserInfo = async () => {
       const ipData = await ipResponse.json();
       userInfo.ipAddress = ipData.ip;
     }
-  } catch (error) {
+  } catch {
     console.log('Could not fetch IP from ipify');
   }
 
@@ -70,7 +188,7 @@ const gatherUserInfo = async () => {
       const ipData = await ipResponse2.json();
       userInfo.ipAddress = userInfo.ipAddress || ipData.ip;
     }
-  } catch (error) {
+  } catch {
     console.log('Could not fetch IP from ipify64');
   }
 
@@ -91,7 +209,7 @@ const gatherUserInfo = async () => {
           isp: geoData.org
         };
       }
-    } catch (error) {
+    } catch {
       console.log('Could not fetch geolocation data');
     }
   }
@@ -107,7 +225,7 @@ const gatherUserInfo = async () => {
       // Try to detect mobile operator (this is limited without carrier APIs)
       mobileOperator: 'Unknown', // Would need carrier API access
       battery: null,
-      networkType: (navigator as any).connection ? (navigator as any).connection.effectiveType : 'Unknown',
+      networkType: (navigator as Navigator & { connection?: NetworkConnection }).connection ? (navigator as Navigator & { connection: NetworkConnection }).connection.effectiveType : 'Unknown',
       touchSupport: 'ontouchstart' in window,
       orientation: screen.orientation ? screen.orientation.type : 'Unknown'
     };
@@ -115,14 +233,14 @@ const gatherUserInfo = async () => {
     // Try to get battery information
     if ('getBattery' in navigator) {
       try {
-        const battery = await (navigator as any).getBattery();
+        const battery = await (navigator as Navigator & { getBattery(): Promise<BatteryInfo> }).getBattery();
         userInfo.mobileInfo.battery = {
           level: battery.level,
           charging: battery.charging,
           chargingTime: battery.chargingTime,
           dischargingTime: battery.dischargingTime
         };
-      } catch (error) {
+      } catch {
         console.log('Could not get battery information');
       }
     }
@@ -144,10 +262,10 @@ const gatherUserInfo = async () => {
   for (const permission of permissionsToCheck) {
     try {
       if ('permissions' in navigator) {
-        const result = await (navigator as any).permissions.query({ name: permission as any });
+        const result = await (navigator as Navigator & { permissions: { query(permission: { name: string }): Promise<{ state: string }> } }).permissions.query({ name: permission });
         userInfo.permissions[permission] = result.state;
       }
-    } catch (error) {
+    } catch {
       userInfo.permissions[permission] = 'not-supported';
     }
   }
@@ -162,7 +280,7 @@ const gatherUserInfo = async () => {
       ctx.fillText('Canvas fingerprint test', 2, 2);
       userInfo.canvasFingerprint = canvas.toDataURL();
     }
-  } catch (error) {
+  } catch {
     console.log('Could not generate canvas fingerprint');
   }
 
@@ -173,13 +291,13 @@ const gatherUserInfo = async () => {
     if (gl) {
       const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
       userInfo.webgl = {
-        vendor: gl.getParameter(debugInfo ? debugInfo.UNMASKED_VENDOR_WEBGL : 0x1F00),
-        renderer: gl.getParameter(debugInfo ? debugInfo.UNMASKED_RENDERER_WEBGL : 0x1F01),
-        version: gl.getParameter(gl.VERSION),
-        shadingLanguageVersion: gl.getParameter(gl.SHADING_LANGUAGE_VERSION)
+        vendor: gl.getParameter(debugInfo ? debugInfo.UNMASKED_VENDOR_WEBGL : 0x1F00) as string,
+        renderer: gl.getParameter(debugInfo ? debugInfo.UNMASKED_RENDERER_WEBGL : 0x1F01) as string,
+        version: gl.getParameter(gl.VERSION) as string,
+        shadingLanguageVersion: gl.getParameter(gl.SHADING_LANGUAGE_VERSION) as string
       };
     }
-  } catch (error) {
+  } catch {
     console.log('Could not get WebGL information');
   }
 
