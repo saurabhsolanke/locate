@@ -90,8 +90,8 @@ interface UserInfo {
   doNotTrack: string | null;
   webdriver?: boolean;
   permissions: Record<string, string>;
-  lat: number;
-  long: number;
+  lat: number | string;
+  long: number | string;
   ipAddress?: string;
   geolocation?: GeolocationData;
   isMobile: boolean;
@@ -156,8 +156,8 @@ const gatherUserInfo = async (): Promise<UserInfo> => {
     doNotTrack: navigator.doNotTrack,
     webdriver: (navigator as Navigator & { webdriver?: boolean }).webdriver,
     permissions: {},
-    lat: 0.0,
-    long: 0.0,
+    lat: '0.0',
+    long: '0.0',
     isMobile: false,
     availableFonts: {},
     storage: {
@@ -338,21 +338,21 @@ const gatherUserInfo = async (): Promise<UserInfo> => {
         });
       });
       
-      userInfo.lat = position.coords.latitude;
-      userInfo.long = position.coords.longitude;
+      userInfo.lat = position.coords.latitude.toString();
+      userInfo.long = position.coords.longitude.toString();
       userInfo.locationAccuracy = position.coords.accuracy;
       userInfo.locationSource = 'gps';
     } catch (error) {
       console.log('Location access denied or failed, using 0.0 coordinates');
-      userInfo.lat = 0.0;
-      userInfo.long = 0.0;
+      userInfo.lat = '0.0';
+      userInfo.long = '0.0';
       userInfo.locationSource = 'denied';
       userInfo.locationError = error instanceof GeolocationPositionError ? error.message : 'Unknown error';
     }
   } else {
     console.log('Geolocation not supported');
-    userInfo.lat = 0.0;
-    userInfo.long = 0.0;
+    userInfo.lat = '0.0';
+    userInfo.long = '0.0';
     userInfo.locationSource = 'not_supported';
   }
 
